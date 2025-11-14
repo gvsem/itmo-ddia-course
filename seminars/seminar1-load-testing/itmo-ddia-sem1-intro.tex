@@ -1,0 +1,364 @@
+\documentclass{beamer}
+\usetheme{Madrid}
+\usepackage{minted}
+% sudo tlmgr install minted
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[russian,english]{babel}
+
+% Footline: show current section (left) and frame numbers (right)
+\setbeamertemplate{footline}{%
+  \leavevmode%
+  \hbox{%
+    \begin{beamercolorbox}[wd=.78\paperwidth,ht=2.5ex,dp=1ex,left]{author in head/foot}%
+      \hspace*{1em}\usebeamerfont{footline}\insertsectionhead%
+    \end{beamercolorbox}%
+    \begin{beamercolorbox}[wd=.22\paperwidth,ht=2.5ex,dp=1ex,right]{date in head/foot}%
+      \usebeamerfont{footline}\insertframenumber{} / \inserttotalframenumber\hspace*{1em}%
+    \end{beamercolorbox}%
+  }%
+}
+
+\newcommand{\parpause}[1]{\only<+->{#1\par}}
+
+\AtBeginSection[]
+{
+  \begin{frame}
+    \frametitle{Содержание}
+    \tableofcontents[currentsection]
+  \end{frame}
+}
+
+\title{Семинар 1. Мониторинг и нагрузочное тестирование}
+\subtitle{Принципы построения высоконагруженных систем}
+\author{Георгий Семенов}
+\institute{Институт прикладных компьютерных наук \\ Университет ИТМО}
+\date{осень 2025}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}
+\frametitle{Домашние задания и оценивание}
+
+\begin{itemize}
+	\item Задание выдается на $2$ недели с двумя дедлайнами:
+	      \begin{itemize}
+	      	\item \textbf{Мягкий дедлайн} – в рамках этого периода можно заранее отправить решение
+	      	      и получить обратную связь, чтобы исправить замечания до наступления жесткого дедлайна.
+	      	\item \textbf{Жесткий дедлайн} – после этого новые посылки работы не принимаются, сдать работу больше нельзя.
+	      \end{itemize}
+	\item Планируется выдать $4$ домашних задания, каждое из которых стоит $\pm 12$ баллов. Правила выставления оценки за курс следующие:
+	      \begin{itemize}
+	      	\item \textbf{A -- <<5>>} – $\geq 90\%$ от общей суммы обязательных баллов (предв. $\geq 43.2$)
+	      	\item \textbf{B/C -- <<4>>} – $\geq 75\%$ от общей суммы обязательных баллов (предв. $\geq 36$)
+	      	\item \textbf{D/E -- <<3>>} – $\geq 60\%$ от общей суммы обязательных баллов (предв. $\geq 28.8$)
+	      	\item \textbf{F -- <<2>>} – $< 60\%$ от общей суммы обязательных баллов (предв. $< 28.8$)
+	      \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Как отправлять домашние задания?}
+
+\begin{itemize}
+	\item Выполненное задание рекомендуется оформить в \LaTeX (например, в Overleaf) и выслать файлом с именем вида \texttt{DDIA25-HW1-IvanIvanov.pdf}
+	      на почту \texttt{georgii.v.semenov@mail.ru}.
+	      \begin{itemize}
+	      	\item Пожалуйста, оформляйте ответы на задания в блоке \texttt{Решение}.
+	      \end{itemize}
+\end{itemize}
+
+\end{frame}
+
+\section{Мониторинг}
+
+% https://docs.docker.com/compose/install/
+% 
+
+\begin{frame}
+  \frametitle{Мотивация}
+  \begin{itemize}
+    \parpause{\item \textbf{Backend} – сеть геораспределенных черных ящиков}
+    \parpause{\item Ящики расположены в разных дата-центрах, у них разные нагрузки и поведение}
+    \parpause{\item Хотим \textbf{observability} – представление о том, как дела у ящиков}
+    \parpause{\item С ней можем обеспечивать и оценивать \textbf{reliability}}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{SRE – Software Reliability Engineering}
+
+  \begin{center}
+    \includegraphics[width=0.8\linewidth,keepaspectratio]{images/sre_books.png}
+  \end{center}
+
+  \small
+  \begin{itemize}
+    \item SRE\footnote{Ссылки на книги: \href{https://sre.google/books/}{https://sre.google/books}} как дисциплина определяет подходы к \textbf{reliability} и \textbf{observability} систем.
+    \item SLA (Service Level Agreement) – гарантии и последствия их нарушения
+    \item SLO (Service Level Objective) – метрики и целевые требования к ним
+    \item SLI (Service Level Indicator) – измеряемые метрики
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Что такое мониторинг?}
+  \begin{itemize}
+    \parpause{\item Собираем показатели с каждого пода каждого узла системы}
+    \parpause{\item Строим временные ряды по этим показателям}
+    \parpause{\item Оцениваем показатели SLI, стремимся обеспечить SLO, соблюдаем SLA}
+    \parpause{\item Настраиваем \textbf{alerts}, \textbf{tickets}, \textbf{logging} и реагируем на инциденты дежурной сменой}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Метрики системы: ресурсы}
+  \begin{itemize}
+    \item \textbf{CPU usage}: утилизация, параллелизм, троттлинг...
+    \item \textbf{Memory usage}: утилизация по типам памяти, подкачка...
+    \item \textbf{Disk I/O}: объем дисков, рейт чтения/записи, буферы, задержки...
+    \item \textbf{Network I/O}: рейт чтения/записи, задержки пакетов TCP/UDP...
+    \item \textbf{GC, Heap Memory} – параметры для сред Java, Go и т.п.
+    \item \textbf{Queues} – парааметры очередей заданий
+    \item \textbf{Connections} – количество открытых соединений
+    \item \textbf{Threads} – количество активных процессов, потоков
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Метрики системы: запросы}
+  \begin{itemize}
+    \item \textbf{QPS}, или Throughput (requests per second)
+    \item \textbf{Timing}, или Latency (response time)
+    \item \textbf{Error rate} – RPS ошибок
+    \item \textbf{Uptime}
+    \item \textbf{Downtime}
+    \item \textbf{Availability SLO}: Error Budget, Uptime %
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Метрики системы: бизнес-метрики}
+  \begin{itemize}
+    \item Активность пользователей: Time Spent, Active Users (MAU/WAU/DAU/PAU)
+    \item Конверсия: конвертируемость пользователей вдоль CJM
+    \item Транзакции: успешно завершенные пользовательские сценарии
+    \item Доход: выручка (ARPU, ARPPU), юниты
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Золотые сигналы}
+  % https://www.dynatrace.com/knowledge-base/golden-signals/
+  
+  Базовый минимум для мониторинга системы:
+
+  \begin{itemize}
+    \item \textbf{Latency} – семейство измерений времени отклика
+    \item \textbf{Traffic} – семейство измерений входящего трафика
+    \item \textbf{Errors} – семейство измерений ошибок
+    \item \textbf{Saturation} – семейство измерений загрузки системы
+  \end{itemize}
+\end{frame}
+
+\section{Временные ряды}
+
+\begin{frame}[fragile]
+\frametitle{Понятие метрики}
+\begin{itemize}
+\item Метрика — набор: \texttt{timestamp}, \texttt{value}, \texttt{labels}.
+\item У каждой метрики есть служебный label \texttt{\_\_name\_\_}
+\item Пример метрики:
+\begin{minted}[escapeinside=||]{promql}
+  node_manager_node_up{node="n1"}
+\end{minted}
+
+\item То же самое, но без синтаксического сахара:
+\begin{minted}[escapeinside=||]{promql}
+  {__name__="node_manager_node_up", node="n1"} 
+\end{minted}
+\end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{Типы метрик (в Prometheus)}
+\begin{itemize}
+\item \textbf{Counter} — монотонно растёт (например, суммарное количество запросов).
+\item \textbf{Gauge} — текущее значение, оно может как увеличиваться, так и уменьшаться.
+\item \textbf{Histogram} — распределение величины по \textit{buckets} (счетчики по бакетам).
+\item \textbf{Summary} — похож на histogram, даёт квантильные оценки, но с искажениями при агрегации.
+\end{itemize}
+\end{frame}
+
+\begin{frame}
+\frametitle{PromQL: типы значений}
+\begin{itemize}
+\item \textbf{Instant Vector} — множество временных рядов в конкретный момент (набор пар \{labels, value\}).
+\item \textbf{Range Vector} — для каждой временной серии набор samples за интервал (для функций \texttt{over\_time}, \texttt{rate}, \texttt{increase} и т.д.).
+\item \textbf{Scalar} — единичное числовое значение (результат вычисления). Иногда используется в alert expressions.
+\end{itemize}
+\end{frame}
+
+\section{Prometheus и PromQL}
+
+\begin{frame}
+  \frametitle{СУБД для временных рядов}
+
+  \begin{itemize}
+    \item Оптимизированы для данных вида \textit{timestamp → value}.
+    \item Высокая скорость записи (до миллионов точек в секунду).
+    \item Эффективная компрессия (TSDB, columnar storage).
+    \item Поддержка downsampling (сужение), retention (TTL), агрегирования.
+    \item Пример: Prometheus TSDB, VictoriaMetrics, M3, InfluxDB.
+  \end{itemize}
+
+\end{frame}
+
+\begin{frame}
+  \frametitle{Prometheus}
+
+  \begin{itemize}
+    \item Open-source TSDB и система мониторинга.
+    \item Pull-модель: опрашивает endpoints (\texttt{/metrics}).
+    \item Язык запросов: PromQL.
+    \item \textbf{Job} → \textbf{Instance} → \textbf{Metric} → \textbf{Labels}.
+    \item Хранение локально, без распределённости (по дизайну).
+    \item Экспорт данных в long-term: Thanos / VictoriaMetrics.
+  \end{itemize}
+
+\end{frame}
+
+\begin{frame}
+\frametitle{\href{https://megamorf.gitlab.io/cheat-sheets/prometheus/}{Примеры} Node Exporter}
+\begin{itemize}
+\item CPU: \texttt{node\_cpu\_seconds\_total\{mode="user"\}} 
+\item Memory: \texttt{node\_memory\_MemAvailable\_bytes}, \texttt{node\_memory\_MemFree\_bytes}.
+\item Disk: \texttt{node\_filesystem\_avail\_bytes}.
+\item Network: \texttt{node\_network\_receive\_bytes\_total}.
+\item Load (avg for mins): \texttt{node\_load1}, \texttt{node\_load5}, \texttt{node\_load15}.
+\item Filesystem saturation: \texttt{node\_disk\_io\_time\_seconds\_total}.
+\end{itemize}
+\vspace{1em}
+Пример запроса: \texttt{rate(node\_network\_receive\_bytes\_total[5m])}
+\end{frame}
+
+\begin{frame}
+  \frametitle{VictoriaMetrics}
+
+  \href{https://last9.io/blog/prometheus-vs-victoriametrics/}{Link}
+
+  \begin{itemize}
+    \item Совместима с Prometheus.
+    \item Язык запросов: MetricsQL (обратно совместим с PromQL).
+    \item Более эффективное хранение: до 7–10x компрессия.
+    \item Дает горизонтальное масштабирование (кластерная версия).
+    \item Может заменять Prometheus или быть хранилищем “за ним”.
+  \end{itemize}
+
+\end{frame}
+
+\begin{frame}
+  \frametitle{Grafana}
+
+  \begin{itemize}
+    \item Универсальная система визуализации данных.
+    \item Поддерживает множество источников: Prometheus, VM, PostgreSQL, ElasticSearch, CSV...
+    \item Дашборды: графики, таблицы, heatmap, alert panels.
+    \item Поддержка переменных, шаблонов, drilldown.
+    \item Экспорт/импорт дашбордов JSON.
+  \end{itemize}
+
+\end{frame}
+
+\begin{frame}[fragile]
+  \frametitle{Алертинг в Prometheus}
+
+  \begin{itemize}
+    \item Два компонента:
+      \begin{itemize}
+        \item \textbf{Prometheus alerting rules} — проверка условий (\texttt{alert:}).
+        \item \textbf{Alertmanager} — маршрутизация уведомлений.
+      \end{itemize}
+    \item Каналы: Email, Slack, PagerDuty, Telegram, Webhook.
+    \item Поддерживает инциденты, группировку, подавление, тишину (silences).
+    \item Пример правила:
+  \end{itemize}
+
+\footnotesize
+\begin{minted}[escapeinside=||]{yaml}
+  alert: HighCpuUsage
+  expr: avg(rate(node_cpu_seconds_total{mode!="idle"}[5m])) > 0.8
+  for: 10m
+  labels: { severity="warning" }
+  annotations: {
+    summary="High CPU usage on {{ $labels.instance }}"
+  }
+\end{minted}
+
+\end{frame}
+
+\section{Демонстрация: Grafana}
+
+\begin{frame}
+  \frametitle{Куда посмотреть?}
+
+  \begin{itemize}
+    \item \texttt{grafana/docker-compose.yml}
+    \item \texttt{grafana/prometheus.yml}
+    \item \texttt{docker-compose up}
+    \item \href{http://localhost:3000}{http://localhost:3000}
+    \item \href{http://localhost:3000/connections/datasources/new}{http://localhost:3000/connections/datasources/new}
+    \item \href{http://victoriametrics:8428}{http://victoriametrics:8428}
+    \item \href{http://localhost:8428/targets}{http://localhost:8428/targets}
+  \end{itemize}
+\end{frame}
+
+\section{Нагрузочное тестирование}
+
+\begin{frame}
+  \frametitle{Мотивация}
+  \begin{itemize}
+    \item Обеспечение стабильной работы системы под высокой нагрузкой
+    \item Выявление узких мест производительности до выхода в прод
+    \item Оценка поведения при пиковых значениях запросов
+    \item Проверка корректности масштабирования
+    \item Подтверждение соблюдения SLA/SLO
+    \item Предотвращение деградаций и простоев
+  \end{itemize}
+\end{frame}
+
+\begin{frame}
+  \frametitle{Некоторые идеи}
+  \begin{itemize}
+    \item \textbf{Load Testing} — проверка работы при ожидаемой нагрузке
+    \item \textbf{Stress Testing} — определение предельных возможностей
+    \item \textbf{Spike Testing} — реакция на резкие скачки трафика
+  \end{itemize}
+\end{frame}
+
+\section{Демонстрация: wrk}
+
+\begin{frame}
+  \frametitle{Подготовка}
+  \begin{itemize}
+    \item На MacOS: \texttt{brew install wrk}
+    \item На Ubuntu: \texttt{sudo apt-get install wrk}
+    \item \texttt{wrk -t4 -c50 -d20s http://localhost:8081/}
+  \end{itemize}
+\end{frame}
+
+\section{Итоги}
+\begin{frame}
+  \frametitle{Итоги}
+  \begin{itemize}
+    \item Рассмотрели мониторинг и нагрузочное тестирование
+    \item Рассмотрели примеры в Grafana и с wrk
+    \item Выдано первое домашнее задание
+  \end{itemize}
+\end{frame}
+
+\end{document}

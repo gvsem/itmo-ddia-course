@@ -1,0 +1,72 @@
+services:
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:latest
+    container_name: victoriametrics
+    ports:
+      - "8428:8428"
+    command:
+      - "--storageDataPath=/victoria-metrics-data"
+      - "--selfScrapeInterval=10s"
+      - "--promscrape.config=/etc/prometheus/prometheus.yml"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    restart: unless-stopped
+
+  nodeexporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: nodeexporter
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+
+  # macos
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped
+
+  # linux
+  # cadvisor:
+  #   image: gcr.io/cadvisor/cadvisor:latest
+  #   container_name: cadvisor
+  #   ports:
+  #     - "8080:8080"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - /sys:/sys:ro
+  #     - /var/lib/docker/:/var/lib/docker:ro
+  #     - /cgroup:/cgroup:ro
+  #   restart: unless-stopped
+
+  app:
+    build: ./app
+    ports:
+      - "8081:8081"
+      - "8082:8082"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    depends_on:
+      - victoriametrics
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    restart: unless-stopped
+
+volumes:
+  grafana-storage:

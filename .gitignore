@@ -7,4 +7,6 @@
 *.snm
 *.nav
 *.toc
+*.vrb
 _minted
+.DS_Store
